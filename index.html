@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Petro — Find Fuel Before You're Running on Fumes | Ghostroute</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⛽</text></svg>">
+
+<meta name="description" content="Petro finds verified filling stations around your exact location and sorts them closest-first — before your tank hits E.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#06090a;
+    --bg-soft:#0a0f0e;
+    --panel:#0d1310;
+    --glass:rgba(16,20,18,0.58);
+    --glass-border:rgba(255,255,255,0.08);
+
+    --fuel:#f2a93c;
+    --fuel-deep:#b9761e;
+    --tank-low:#c94a3a;
+    --slick-teal:#2bb3a0;
+    --slick-violet:#8b74d9;
+    --verified:#33c56a;
+    --verified-dim:rgba(51,197,106,0.14);
+
+    --text:#f3f0e8;
+    --text-dim:#a09c8f;
+    --text-faint:#5d5a50;
+
+    --radius-lg:24px;
+    --radius-md:15px;
+    --radius-sm:9px;
+
+    --display:'Oswald', sans-serif;
+    --body:'Manrope', sans-serif;
+    --mono:'IBM Plex Mono', monospace;
+  }
+
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--body);
+    line-height:1.55;
+    overflow-x:hidden;
+    position:relative;
+  }
+
+  .ambient{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(650px 420px at 85% 8%, rgba(242,169,60,0.09), transparent 60%),
+      radial-gradient(700px 500px at 5% 40%, rgba(43,179,160,0.08), transparent 60%),
+      radial-gradient(900px 600px at 50% 105%, rgba(139,116,217,0.05), transparent 60%);
+  }
+  .grain{
+    position:fixed; inset:0; z-index:0; pointer-events:none; opacity:0.03;
+    background-image:repeating-linear-gradient(0deg, #fff 0 1px, transparent 1px 3px);
+  }
+
+  main, header, footer{ position:relative; z-index:1; }
+  a{ color:inherit; text-decoration:none; }
+  ul{ list-style:none; }
+  .wrap{ max-width:1180px; margin:0 auto; padding:0 28px; }
+
+  /* ---------- NAV ---------- */
+  nav.top{
+    position:sticky; top:0; z-index:50;
+    backdrop-filter:blur(16px) saturate(140%);
+    -webkit-backdrop-filter:blur(16px) saturate(140%);
+    background:rgba(6,9,10,0.66);
+    border-bottom:1px solid var(--glass-border);
+  }
+  nav.top .wrap{ display:flex; align-items:center; justify-content:space-between; height:68px; }
+  .ghostroute-tag{
+    font-family:var(--mono); font-size:11px; letter-spacing:0.12em;
+    color:var(--text-faint); text-transform:uppercase;
+    display:flex; align-items:center; gap:8px;
+  }
+  .ghostroute-tag .dot{
+    width:6px; height:6px; border-radius:50%; background:var(--fuel);
+    box-shadow:0 0 8px var(--fuel);
+  }
+  .brand{
+    display:flex; align-items:center; gap:10px;
+    font-family:var(--display); font-weight:700; font-size:22px; letter-spacing:0.01em;
+  }
+  .brand .mark{
+    width:34px; height:34px; border-radius:9px;
+    background:linear-gradient(160deg, var(--fuel), var(--fuel-deep));
+    display:flex; align-items:center; justify-content:center;
+    font-size:16px; border:1px solid rgba(255,255,255,0.1);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.3), 0 4px 14px rgba(0,0,0,0.5);
+  }
+  .brand span.name{ color:var(--text); }
+  .brand span.dot-o{ color:var(--fuel); }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    font-family:var(--body); font-weight:700; font-size:14.5px;
+    padding:11px 22px; border-radius:999px; border:1px solid transparent;
+    cursor:pointer; transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
+    white-space:nowrap;
+  }
+  .btn:focus-visible{ outline:2px solid var(--fuel); outline-offset:3px; }
+  .btn-primary{
+    background:linear-gradient(180deg, #ffc266, var(--fuel-deep));
+    color:#1c1102;
+    box-shadow:0 6px 20px rgba(242,169,60,0.3), inset 0 1px 0 rgba(255,255,255,0.3);
+  }
+  .btn-primary:hover{ transform:translateY(-2px); box-shadow:0 10px 28px rgba(242,169,60,0.4); }
+  .btn-ghost{
+    background:var(--glass); border:1px solid var(--glass-border); color:var(--text);
+    backdrop-filter:blur(10px);
+  }
+  .btn-ghost:hover{ border-color:rgba(255,255,255,0.2); transform:translateY(-2px); }
+  .btn-sm{ padding:8px 16px; font-size:13px; }
+
+  /* ---------- SIGNATURE: scroll tank gauge rail ---------- */
+  .tank-rail{
+    position:fixed; right:22px; top:50%; transform:translateY(-50%);
+    z-index:40; display:flex; flex-direction:column; align-items:center; gap:8px;
+    font-family:var(--mono);
+  }
+  .tank-rail .lbl{ font-size:10px; color:var(--text-faint); letter-spacing:0.08em; }
+  .tank-rail .tube{
+    width:10px; height:180px; border-radius:999px;
+    background:rgba(255,255,255,0.05); border:1px solid var(--glass-border);
+    position:relative; overflow:hidden;
+    box-shadow:inset 0 2px 6px rgba(0,0,0,0.5);
+  }
+  .tank-rail .tube .fill{
+    position:absolute; left:0; right:0; bottom:0; height:4%;
+    background:linear-gradient(180deg, var(--fuel), var(--fuel-deep));
+    box-shadow:0 0 12px rgba(242,169,60,0.6);
+    transition:height .12s linear;
+  }
+  .tank-rail .pct{ font-size:10.5px; color:var(--fuel); font-weight:600; }
+  @media (max-width:900px){ .tank-rail{ display:none; } }
+
+  /* ---------- HERO ---------- */
+  header.hero{ padding:84px 0 44px; overflow:hidden; }
+  .hero-grid{ display:grid; grid-template-columns:1.05fr 0.95fr; gap:48px; align-items:center; }
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:var(--mono); font-size:12px; letter-spacing:0.08em;
+    color:var(--fuel); text-transform:uppercase;
+    background:rgba(242,169,60,0.08); border:1px solid rgba(242,169,60,0.25);
+    padding:6px 12px; border-radius:999px; margin-bottom:22px;
+  }
+  h1{
+    font-family:var(--display); font-weight:700;
+    font-size:clamp(34px, 4.6vw, 56px); line-height:1.05; letter-spacing:-0.005em;
+    margin-bottom:20px; text-transform:none;
+  }
+  h1 .accent{ color:var(--fuel); }
+  .hero p.lead{ font-size:clamp(16px, 1.6vw, 18.5px); color:var(--text-dim); max-width:520px; margin-bottom:32px; }
+  .hero-ctas{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:28px; }
+  .hero-note{ font-family:var(--mono); font-size:12.5px; color:var(--text-faint); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .hero-note .badge-free{
+    background:var(--verified-dim); color:var(--verified);
+    border:1px solid rgba(51,197,106,0.3); padding:3px 9px; border-radius:6px; font-weight:700; font-size:11.5px;
+  }
+
+  /* ---------- GAUGE (signature hero visual) ---------- */
+  .gauge-stage{ position:relative; width:100%; max-width:440px; margin:0 auto; }
+  .gauge-frame{
+    position:relative; border-radius:26px;
+    background:radial-gradient(120% 140% at 50% 100%, #0f1512 0%, #070907 65%, #030403 100%);
+    border:1px solid rgba(242,190,120,0.14);
+    box-shadow:0 30px 80px rgba(0,0,0,0.6), inset 0 0 60px rgba(242,169,60,0.04);
+    padding:34px 30px 26px;
+  }
+  .gauge-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .gauge-title{ font-family:var(--mono); font-size:10.5px; letter-spacing:0.14em; color:rgba(242,200,140,0.55); text-transform:uppercase; }
+  .gauge-title .lit{ color:var(--fuel); }
+  .gauge-count{ font-family:var(--mono); font-size:11px; color:var(--slick-teal); }
+
+  svg.dial{ width:100%; height:auto; display:block; }
+  .dial .arc-track{ fill:none; stroke:rgba(255,255,255,0.06); stroke-width:10; stroke-linecap:round; }
+  .dial .arc-fill{
+    fill:none; stroke:url(#slickGrad); stroke-width:10; stroke-linecap:round;
+    stroke-dasharray:251; stroke-dashoffset:251;
+    animation:arcFill 2.2s cubic-bezier(.2,.8,.2,1) forwards .3s;
+  }
+  @keyframes arcFill{ to{ stroke-dashoffset:34; } }
+  .dial .tick{ stroke:rgba(255,255,255,0.18); stroke-width:2; }
+  .dial .tick-lbl{ font-family:var(--mono); font-size:9px; fill:var(--text-faint); }
+  .dial .needle{
+    transform-origin:150px 150px;
+    animation:needleSweep 2.4s cubic-bezier(.2,.8,.2,1) forwards .3s;
+  }
+  @keyframes needleSweep{
+    0%{ transform:rotate(-95deg); }
+    70%{ transform:rotate(46deg); }
+    85%{ transform:rotate(38deg); }
+    100%{ transform:rotate(42deg); }
+  }
+  .dial .pivot{ fill:var(--fuel); filter:drop-shadow(0 0 6px rgba(242,169,60,0.8)); }
+
+  .dial .station-dot{ fill:var(--verified); filter:drop-shadow(0 0 5px rgba(51,197,106,0.8)); opacity:0; animation:dotIn .6s ease forwards; }
+  .dial .station-dot.d1{ animation-delay:2.3s; }
+  .dial .station-dot.d2{ animation-delay:2.55s; }
+  .dial .station-dot.d3{ animation-delay:2.8s; }
+  .dial .station-dot.d4{ animation-delay:3.05s; }
+  .dial .station-dot.d5{ animation-delay:3.3s; }
+  @keyframes dotIn{ from{ opacity:0; transform:scale(0.4); } to{ opacity:1; transform:scale(1); } }
+
+  .gauge-readout{
+    display:flex; justify-content:space-between; align-items:flex-end; margin-top:8px;
+    padding-top:16px; border-top:1px solid var(--glass-border);
+  }
+  .gauge-readout .big{ font-family:var(--display); font-size:30px; font-weight:700; color:var(--text); }
+  .gauge-readout .big span{ color:var(--fuel); }
+  .gauge-readout .small{ font-family:var(--mono); font-size:11px; color:var(--text-faint); text-align:right; }
+
+  /* ---------- SECTIONS shared ---------- */
+  section{ padding:80px 0; }
+  .section-head{ max-width:640px; margin-bottom:48px; }
+  .section-head .eyebrow{ margin-bottom:14px; }
+  h2{ font-family:var(--display); font-weight:700; font-size:clamp(26px, 3vw, 36px); letter-spacing:-0.005em; margin-bottom:12px; }
+  .section-head p{ color:var(--text-dim); font-size:16px; }
+
+  .reveal{ opacity:0; transform:translateY(22px); transition:opacity .7s ease, transform .7s ease; }
+  .reveal.in{ opacity:1; transform:translateY(0); }
+
+  /* ---------- HOW IT WORKS (E -> 1/2 -> F) ---------- */
+  .gsteps{ display:grid; grid-template-columns:repeat(3,1fr); gap:22px; }
+  .gstep{
+    background:var(--glass); border:1px solid var(--glass-border);
+    backdrop-filter:blur(14px) saturate(130%);
+    border-radius:var(--radius-lg); padding:28px 26px; position:relative; overflow:hidden;
+  }
+  .gstep .letter{
+    font-family:var(--display); font-size:15px; font-weight:700; color:var(--fuel);
+    background:rgba(242,169,60,0.1); border:1px solid rgba(242,169,60,0.3);
+    width:34px; height:34px; border-radius:8px;
+    display:flex; align-items:center; justify-content:center; margin-bottom:18px;
+  }
+  .gstep h3{ font-family:var(--display); font-size:20px; font-weight:700; margin-bottom:8px; }
+  .gstep p{ color:var(--text-dim); font-size:14.5px; }
+
+  /* ---------- FEATURES ---------- */
+  .features{ display:grid; grid-template-columns:repeat(4,1fr); gap:18px; }
+  .feature{
+    background:var(--glass); border:1px solid var(--glass-border);
+    backdrop-filter:blur(14px); border-radius:var(--radius-md); padding:22px 20px;
+    transition:transform .25s ease, border-color .25s ease;
+  }
+  .feature:hover{ transform:translateY(-4px); border-color:rgba(242,169,60,0.3); }
+  .feature .ic{ font-size:22px; margin-bottom:12px; display:block; }
+  .feature h4{ font-size:15.5px; font-weight:700; margin-bottom:6px; }
+  .feature p{ font-size:13.5px; color:var(--text-dim); }
+
+  /* ---------- PRICING STRIP ---------- */
+  .price-strip{
+    display:flex; align-items:center; justify-content:space-between; gap:24px; flex-wrap:wrap;
+    background:linear-gradient(120deg, rgba(242,169,60,0.09), rgba(43,179,160,0.06));
+    border:1px solid rgba(242,169,60,0.22);
+    backdrop-filter:blur(16px); border-radius:var(--radius-lg); padding:28px 32px;
+  }
+  .price-strip .left{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  .price-tag{ font-family:var(--mono); font-size:22px; font-weight:700; color:var(--fuel); }
+  .price-tag small{ font-size:13px; color:var(--text-faint); font-weight:500; }
+  .free-pill{
+    font-family:var(--mono); font-size:11.5px; text-transform:uppercase; letter-spacing:0.05em;
+    background:var(--verified-dim); color:var(--verified); border:1px solid rgba(51,197,106,0.3);
+    padding:5px 10px; border-radius:6px; font-weight:700;
+  }
+  .price-strip p{ color:var(--text-dim); font-size:14.5px; max-width:380px; }
+
+  /* ---------- PREVIEW MOCK CARDS ---------- */
+  .preview{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .mock-card{
+    background:var(--glass); border:1px solid var(--glass-border);
+    backdrop-filter:blur(14px); border-radius:var(--radius-md); padding:18px 20px;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .mock-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+  .mock-top h5{ font-size:15px; font-weight:700; }
+  .mock-km{
+    font-family:var(--mono); font-size:11.5px; color:var(--fuel);
+    background:rgba(242,169,60,0.1); border:1px solid rgba(242,169,60,0.25);
+    padding:3px 8px; border-radius:6px; white-space:nowrap;
+  }
+  .mock-meta{ display:flex; gap:8px; flex-wrap:wrap; }
+  .mock-pill{
+    font-size:11px; font-family:var(--mono); padding:3px 8px; border-radius:6px;
+    background:rgba(255,255,255,0.05); color:var(--text-faint); border:1px solid var(--glass-border);
+  }
+  .mock-pill.verified{ color:var(--verified); background:var(--verified-dim); border-color:rgba(51,197,106,0.3); }
+  .mock-addr{ font-size:12.5px; color:var(--text-faint); }
+  .mock-rating{ font-family:var(--mono); font-size:12.5px; color:#e0b34a; }
+  .mock-actions{ display:flex; gap:10px; margin-top:6px; }
+  .mock-actions .btn{ flex:1; padding:9px 0; font-size:12.5px; }
+  .mock-actions .btn-ghost{ pointer-events:none; opacity:0.85; }
+  .mock-actions .btn-primary{ pointer-events:none; opacity:0.92; }
+  .preview-note{ grid-column:1/-1; font-family:var(--mono); font-size:11.5px; color:var(--text-faint); text-align:center; padding-top:6px; }
+
+  /* ---------- FINAL CTA ---------- */
+  .final-cta{
+    text-align:center; background:var(--glass); border:1px solid var(--glass-border);
+    backdrop-filter:blur(18px) saturate(140%); border-radius:28px; padding:64px 32px;
+    position:relative; overflow:hidden;
+  }
+  .final-cta::before{
+    content:''; position:absolute; width:420px; height:420px; border-radius:50%;
+    background:radial-gradient(circle, rgba(242,169,60,0.16), transparent 70%);
+    top:-160px; left:50%; transform:translateX(-50%);
+  }
+  .final-cta h2{ position:relative; margin-bottom:14px; }
+  .final-cta p{ position:relative; color:var(--text-dim); max-width:480px; margin:0 auto 30px; }
+  .final-cta .btn{ position:relative; }
+
+  /* ---------- FOOTER ---------- */
+  footer{ border-top:1px solid var(--glass-border); padding:36px 0; margin-top:20px; }
+  footer .wrap{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; }
+  footer p{ font-size:13px; color:var(--text-faint); }
+  .suite-dots{ display:flex; gap:8px; }
+  .suite-dots span{ width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,0.15); }
+  .suite-dots span.active{ background:var(--fuel); box-shadow:0 0 8px var(--fuel); }
+
+  /* ---------- RESPONSIVE ---------- */
+  @media (max-width:900px){
+    .hero-grid{ grid-template-columns:1fr; }
+    .gsteps{ grid-template-columns:1fr; }
+    .features{ grid-template-columns:1fr 1fr; }
+    .preview{ grid-template-columns:1fr; }
+    .gauge-stage{ max-width:360px; }
+  }
+  @media (max-width:560px){
+    .features{ grid-template-columns:1fr; }
+    header.hero{ padding:56px 0 30px; }
+    section{ padding:56px 0; }
+    .price-strip{ flex-direction:column; align-items:flex-start; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="ambient" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<!-- signature scroll element: fills like a tank gauge as the page is read -->
+<div class="tank-rail" aria-hidden="true">
+  <span class="lbl">F</span>
+  <div class="tube"><div class="fill" id="tankFill"></div></div>
+  <span class="lbl">E</span>
+  <span class="pct" id="tankPct">4%</span>
+</div>
+
+<nav class="top">
+  <div class="wrap">
+    <div class="ghostroute-tag"><span class="dot"></span> Ghostroute for everybody</div>
+    <div class="brand"><span class="mark">⛽</span><span class="name">Petro</span></div>
+    <a href="#open" class="btn btn-primary btn-sm">Open Petro</a>
+  </div>
+</nav>
+
+<main>
+  <header class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">Filling station finder</span>
+        <h1>Needle on E, city ahead?<br>Find fuel <span class="accent">before you're coasting to a stop.</span></h1>
+        <p class="lead">Petro scans verified filling stations closest to your exact location — real distance, real ratings, one tap to directions or a call.</p>
+        <div class="hero-ctas">
+          <a href="#open" class="btn btn-primary">Open Petro</a>
+          <a href="#how" class="btn btn-ghost">See how it works</a>
+        </div>
+        <div class="hero-note"><span class="badge-free">1st search free 🌟</span> after that, a search costs less than idling in traffic looking for one</div>
+      </div>
+
+      <div class="gauge-stage" aria-hidden="true">
+        <div class="gauge-frame">
+          <div class="gauge-top">
+            <span class="gauge-title">tank <span class="lit">scan</span></span>
+            <span class="gauge-count">5 nearby</span>
+          </div>
+          <svg class="dial" viewBox="0 0 300 175">
+            <defs>
+              <linearGradient id="slickGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#c94a3a"/>
+                <stop offset="45%" stop-color="#f2a93c"/>
+                <stop offset="75%" stop-color="#2bb3a0"/>
+                <stop offset="100%" stop-color="#8b74d9"/>
+              </linearGradient>
+            </defs>
+
+            <path class="arc-track" d="M 40 150 A 110 110 0 0 1 260 150" />
+            <path class="arc-fill" pathLength="251" d="M 40 150 A 110 110 0 0 1 260 150" />
+
+            <line class="tick" x1="40" y1="150" x2="52" y2="138"/>
+            <line class="tick" x1="76" y1="82" x2="86" y2="92"/>
+            <line class="tick" x1="150" y1="40" x2="150" y2="54"/>
+            <line class="tick" x1="224" y1="82" x2="214" y2="92"/>
+            <line class="tick" x1="260" y1="150" x2="248" y2="138"/>
+            <text class="tick-lbl" x="28" y="166">E</text>
+            <text class="tick-lbl" x="256" y="166">F</text>
+
+            <circle class="station-dot d1" cx="76" cy="90" r="4"/>
+            <circle class="station-dot d2" cx="118" cy="52" r="4"/>
+            <circle class="station-dot d3" cx="168" cy="46" r="4"/>
+            <circle class="station-dot d4" cx="210" cy="70" r="4"/>
+            <circle class="station-dot d5" cx="236" cy="108" r="4"/>
+
+            <g class="needle">
+              <line x1="150" y1="150" x2="150" y2="52" stroke="var(--fuel)" stroke-width="3.5" stroke-linecap="round"/>
+            </g>
+            <circle class="pivot" cx="150" cy="150" r="8"/>
+          </svg>
+          <div class="gauge-readout">
+            <div class="big"><span>20</span> found</div>
+            <div class="small">closest · 0.51 km<br>sorted live by distance</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">How it works</span>
+        <h2>From empty to full, in three taps</h2>
+        <p>Petro runs right in your browser as part of the Ghostroute Ultra-Powerful mini-apps. Here's the exact flow, gauge-style.</p>
+      </div>
+      <div class="gsteps">
+        <div class="gstep reveal">
+          <div class="letter">E</div>
+          <h3>Allow your location</h3>
+          <p>A one-time permission prompt so Petro can measure real distance to nearby filling stations — not a rough guess. GPS must be on at the device level, not just in the browser.</p>
+        </div>
+        <div class="gstep reveal">
+          <div class="letter">½</div>
+          <h3>We scan the tank radius</h3>
+          <p>Verified fuel and petrol filling stations in your area are pulled up and sorted closest-to-you first, measured against ratings from Ghostroute's agents and real drivers who've fueled there before.</p>
+        </div>
+        <div class="gstep reveal">
+          <div class="letter">F</div>
+          <h3>Get directions or call ahead</h3>
+          <p>Tap to open Maps, or call the station directly to check if they're pumping. No middleman, no waiting on a chat reply.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">Why it beats guessing</span>
+        <h2>Built for the moment the light comes on</h2>
+      </div>
+      <div class="features">
+        <div class="feature reveal">
+          <span class="ic">✅</span>
+          <h4>Verified only</h4>
+          <p>Every listing carries a verification badge before it ever reaches your results.</p>
+        </div>
+        <div class="feature reveal">
+          <span class="ic">📍</span>
+          <h4>Distance-sorted</h4>
+          <p>Nearest filling station first, always measured in exact metres from your precise location.</p>
+        </div>
+        <div class="feature reveal">
+          <span class="ic">⭐</span>
+          <h4>Real ratings</h4>
+          <p>Scores come from other drivers who've fueled up there before — not the stations themselves.</p>
+        </div>
+        <div class="feature reveal">
+          <span class="ic">🧭</span>
+          <h4>Maps or a call</h4>
+          <p>One tap for directions, or dial the station straight from your results. No forms, no waiting.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="pricing">
+    <div class="wrap">
+      <div class="price-strip reveal">
+        <div class="left">
+          <div class="price-tag">$0.2 <small>/ search</small></div>
+          <span class="free-pill">First search free</span>
+        </div>
+        <p>Roughly ₦240 a search, charged straight from your Ghostroute balance — far cheaper than driving in circles burning the fuel you're trying to find.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="preview">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">What a search looks like</span>
+      </div>
+      <div class="preview">
+        <div class="mock-card reveal">
+          <div class="mock-top">
+            <h5>Nano Fuel Depot</h5>
+            <span class="mock-km">0.5 km</span>
+          </div>
+          <div class="mock-meta">
+            <span class="mock-pill verified">✓ Verified</span>
+            <span class="mock-pill">Gas Station</span>
+          </div>
+          <div class="mock-addr">Ghost street, sample route, Ghostroute district</div>
+          <div class="mock-rating">★ 4.3</div>
+          <div class="mock-actions">
+            <button class="btn btn-ghost">📍 Maps</button>
+            <button class="btn btn-primary">View station →</button>
+          </div>
+        </div>
+        <div class="mock-card reveal">
+          <div class="mock-top">
+            <h5>Ghostroute Filling Station ⚡</h5>
+            <span class="mock-km">1.6 km</span>
+          </div>
+          <div class="mock-meta">
+            <span class="mock-pill verified">✓ Verified</span>
+            <span class="mock-pill">Gas Station</span>
+          </div>
+          <div class="mock-addr">20 Ghost road, opposite landmark route</div>
+          <div class="mock-rating">★ 4.6</div>
+          <div class="mock-actions">
+            <button class="btn btn-ghost">📞 Call</button>
+            <button class="btn btn-primary">View station →</button>
+          </div>
+        </div>
+        <p class="preview-note">results are sorted live by distance, closest to you — just cause we're cool⚡</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="open">
+    <div class="wrap">
+      <div class="final-cta reveal">
+        <h2>. Join Ghostroute . Get $5 Free . Stop guessing where the nearest fuel is .</h2>
+        <p>Open the Petro mini-app . Turn on location . run one search . see every verified filling station within reach</p>
+        <p>Signup on Ghostroute⚡ and you get $5 free to do anything</p>
+        <a href="https://security.ghostroute.icu/petro" class="btn btn-primary">Open Petro - 1st try free</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>A Part of the <strong style="color:var(--text)">Ghostroute ⚡</strong> — Petro™</p>
+    <div class="suite-dots" aria-hidden="true">
+      <span></span><span class="active"></span><span></span><span></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Scroll-reveal
+  const revealEls = document.querySelectorAll('.reveal');
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.15 });
+  revealEls.forEach(el=>io.observe(el));
+
+  // Signature: page scroll fills the tank gauge rail
+  const fillEl = document.getElementById('tankFill');
+  const pctEl = document.getElementById('tankPct');
+  function updateTank(){
+    const scrollTop = window.scrollY;
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const pct = docHeight > 0 ? Math.min(100, Math.max(4, (scrollTop / docHeight) * 100)) : 4;
+    if(fillEl) fillEl.style.height = pct + '%';
+    if(pctEl) pctEl.textContent = Math.round(pct) + '%';
+  }
+  window.addEventListener('scroll', updateTank, { passive:true });
+  updateTank();
+</script>
+
+</body>
+</html>
